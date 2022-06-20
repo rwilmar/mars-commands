@@ -1,7 +1,7 @@
 {
     "default": {
-        "xPos": 10,
-        "yPos": 10,
+        "xPos": 4,
+        "yPos": 2,
         "orientation": "N"
     }
 }

@@ -5,6 +5,7 @@ import {
   posCmdValidator,
   posObjValidator,
   commandValidator,
+  moveRobot,
 } from './robotLocator.js';
 import { saveCommand } from './persistence.js';
 import { getWorldCoords, setWorldMaxCoord } from './worldState.js';
@@ -41,6 +42,7 @@ const welcomeMessage = (req, res) => {
  * @param {object} req.body - express body object
  * @param {number} req.body.xMax - integer size of grid in x axis
  * @param {number} req.body.yMax - integer size of grid in y axis
+ * @param {string} req.body.command -  string command for position
  * @returns {Promise<void>} 
  */
 const setWorldSize = (req, res) => {
@@ -61,9 +63,11 @@ const setWorldSize = (req, res) => {
     }
 
     setWorldMaxCoord(xMax, yMax)
+    const worldCoords = getWorldCoords();
     res.send({ 
       message: 'new size set for world',
-      worldSize: getWorldCoords(),
+      cmdResponse: `${getWorldCoords().xMax} ${getWorldCoords().yMax}`,
+      worldSize: worldCoords,
     })
   }
   catch(err){
@@ -91,17 +95,31 @@ const setWorldSize = (req, res) => {
     await setRobotLocation(posObj, robotId);
     await saveCommand(posObj, '--LAND', robotId, getUser(), getSession());
 
-    //TODO move
     const valMov = commandValidator(cmdString)
+    const newPos = await moveRobot(valMov, robotId);
+    await saveCommand(posObj, valMov, robotId, getUser(), getSession());
     return res.send({
-      message: 'robot landed',
+      message: 'robot landed and moved',
       robotId,
-      currentPosition: posObj
+      currentPosition: newPos,
+      cmdResponse: `${newPos.xPos} ${newPos.yPos} ${newPos.orientation}`
     })
 
   }
   catch(err){
-    res.status(500).send('error processing movement: ' + err.message);
+    if(err.message.startsWith('robot out of world')){
+      const newPos = await getRobotLocation(robotId);
+      return res.status(500).send({
+        message: 'error processing movement: ' + err.message,
+        robotId,
+        currentPosition: newPos,
+        cmdResponse: `${newPos.xPos} ${newPos.yPos} ${newPos.orientation} LOST`
+      });
+    }
+    return res.status(500).send({
+      message: 'error processing movement: ' + err.message,
+      robotId,
+    });
   }
 }
 
@@ -146,11 +164,80 @@ const landRobot = async (req, res) => {
 }
 
 
+/**
+ * endpoint for landing a robot on the grid surface
+ * @param {object} req - express request object
+ * @param {object} req.body - express body object
+ * @param {number} req.body.cmdString - string defining a series of valid movements 
+ * @param {number} [req.body.robotId] - numeric position for y axis 
+ */
+ const moveRobotMiddleware = async (req, res) => {
+  const cmdString = req.body.command;
+  const robotId = req.body.robotId||'default';
+  try{
+    if(!cmdString)
+      throw new Error('incomplete parameters, command is mandatory')
+
+    const posObj = await getRobotLocation(robotId);
+    const valMov = commandValidator(cmdString)
+    const newPos = await moveRobot(valMov, robotId)
+    await saveCommand(posObj, valMov, robotId, getUser(), getSession());
+    return res.send({
+      message: 'robot moved',
+      robotId,
+      currentPosition: newPos,
+      cmdResponse: `${newPos.xPos} ${newPos.yPos} ${newPos.orientation}`
+    })
+
+  }
+  catch(err){
+    if(err.message.startsWith('robot out of world')){
+      const newPos = await getRobotLocation(robotId);
+      return res.status(500).send({
+        message: 'error processing movement: ' + err.message,
+        robotId,
+        currentPosition: newPos,
+        cmdResponse: `${newPos.xPos} ${newPos.yPos} ${newPos.orientation} LOST`
+      });
+    }
+    return res.status(500).send({
+      message: 'error processing movement: ' + err.message,
+      robotId,
+    });
+  }
+}
+
+/**
+ * endpoint for reading robot position, uses persistence layer to find old robots
+ * @param {object} req - express request object
+ * @param {object} req.body - express body object
+ * @param {string} [req.params.robotId] - string robot identificator in url params
+ * @param {string} [req.query.robotId] - string robot identificator in query params
+ * @return {Promise<void>}
+ */
+const getRobotPosition = async (req, res) => {
+  try{
+    const robotId = req.params.robotId || req.query.robotId || 'default';
+    const posObj = await getRobotLocation(robotId);
+    return res.send({
+      message: 'robot found!',
+      robotId,
+      currentPosition: posObj
+    });
+  }
+  catch(err){
+    res.status(500).send('error reading robot position: ' + err.message);
+  }
+}
+
 app.get('/', welcomeMessage);
 app.get('/worldSize', (req, res) => { res.send(getWorldCoords()) });
 app.post('/worldSize', setWorldSize)
 app.post('/landAndMove', landAndMoveRobot);
 app.post('/landRobot', landRobot);
+app.post('/moveRobot', moveRobotMiddleware);
+app.get('/robotPosition', getRobotPosition);
+app.get('/robotPosition/:robotId', getRobotPosition);
 
 app.listen(APP_PORT, () => {
   console.log(`Mars-Robot movement App listening on port: ${APP_PORT}`)
