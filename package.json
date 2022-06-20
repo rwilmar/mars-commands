@@ -1,0 +1,24 @@
+{
+  "name": "mars-commands",
+  "version": "1.0.0",
+  "description": "mars robot controller fun application ",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rwilmar/mars-commands.git"
+  },
+  "author": "WIlmar Rodriguez",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rwilmar/mars-commands/issues"
+  },
+  "homepage": "https://github.com/rwilmar/mars-commands#readme",
+  "dependencies": {
+    "express": "^4.18.1",
+    "simple-json-db": "^2.0.0"
+  }
+}
